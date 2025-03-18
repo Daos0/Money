@@ -30,6 +30,9 @@ credentials_json = os.getenv("GOOGLE_CREDENTIALS")
 if credentials_json:
     try:
         credentials_info = json.loads(credentials_json)
+        # Преобразуем литеральные "\n" в реальные переводы строк в поле private_key
+        if "private_key" in credentials_info:
+            credentials_info["private_key"] = credentials_info["private_key"].replace("\\n", "\n")
     except json.JSONDecodeError as e:
         logging.error(f"Ошибка парсинга GOOGLE_CREDENTIALS: {e}")
         credentials_info = None
@@ -39,6 +42,8 @@ else:
     try:
         with open(credentials_file, "r") as f:
             credentials_info = json.load(f)
+        if "private_key" in credentials_info:
+            credentials_info["private_key"] = credentials_info["private_key"].replace("\\n", "\n")
     except FileNotFoundError:
         logging.error(f"Файл {credentials_file} не найден.")
         credentials_info = None
@@ -127,6 +132,7 @@ def save_record_to_sheet(record: dict) -> None:
         logging.info(f"Запись сохранена в листе {record['type']}.")
     except Exception as e:
         logging.error(f"Ошибка сохранения записи в лист: {e}")
+        raise
 
 def save_record(record: dict) -> bool:
     """
