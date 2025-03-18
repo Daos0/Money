@@ -1,4 +1,5 @@
 import os
+import json
 import asyncio
 import logging
 import datetime
@@ -23,24 +24,47 @@ if not API_TOKEN:
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
-# Путь к файлу с учетными данными Google Sheets (используется относительный путь или переменная окружения)
-GOOGLE_CREDENTIALS_FILE = os.getenv("GOOGLE_CREDENTIALS_FILE", "credentials.json")
+# ======== Инициализация Google Sheets ==========
+# Попытка получить учетные данные из переменной окружения GOOGLE_CREDENTIALS (JSON-строка)
+credentials_json = os.getenv("GOOGLE_CREDENTIALS")
+if credentials_json:
+    try:
+        credentials_info = json.loads(credentials_json)
+    except json.JSONDecodeError as e:
+        logging.error(f"Ошибка парсинга GOOGLE_CREDENTIALS: {e}")
+        credentials_info = None
+else:
+    # Если переменная не установлена, читаем файл credentials.json (локально)
+    credentials_file = "credentials.json"
+    try:
+        with open(credentials_file, "r") as f:
+            credentials_info = json.load(f)
+    except FileNotFoundError:
+        logging.error(f"Файл {credentials_file} не найден.")
+        credentials_info = None
+    except json.JSONDecodeError as e:
+        logging.error(f"Ошибка чтения файла {credentials_file}: {e}")
+        credentials_info = None
+
+gc = None
+if credentials_info:
+    try:
+        gc = gspread.service_account_from_dict(credentials_info)
+        spreadsheet = gc.open("FinancialRecords")  # Название таблицы
+        income_sheet = spreadsheet.worksheet("Доходы")
+        expense_sheet = spreadsheet.worksheet("Расходы")
+        balance_sheet = spreadsheet.worksheet("Баланс")  # Лист для агрегированных данных
+        logging.info("Google Sheets успешно инициализирован.")
+    except Exception as e:
+        logging.error(f"Ошибка инициализации Google Sheets: {e}")
+        gc = None
+else:
+    logging.error("Учетные данные недоступны. Google Sheets не инициализирован.")
 
 # ======== Глобальные переменные ==========
 pending_inputs = {}         # Для хранения выбора пользователя: {user_id: {"type": str, "category": str}}
 records = []                # Все финансовые записи, загружаемые из Google Sheets
 registered_users = set()    # ID пользователей для автоматической рассылки отчётов
-
-# ======== Инициализация Google Sheets ==========
-try:
-    gc = gspread.service_account(filename=GOOGLE_CREDENTIALS_FILE)
-    spreadsheet = gc.open("FinancialRecords")  # Название таблицы
-    income_sheet = spreadsheet.worksheet("Доходы")
-    expense_sheet = spreadsheet.worksheet("Расходы")
-    balance_sheet = spreadsheet.worksheet("Баланс")  # Лист для агрегированных данных
-except Exception as e:
-    logging.error(f"Ошибка инициализации Google Sheets: {e}")
-    gc = None
 
 # ---------------------------------------------------------------------------- #
 #                      Функции работы с записями и графиками                     #
